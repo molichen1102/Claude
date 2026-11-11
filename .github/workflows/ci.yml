@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax-check inline script
+        run: |
+          node -e 'const fs=require("fs");const m=fs.readFileSync("index.html","utf8").match(/<script>([\s\S]*)<\/script>/);if(!m){console.error("no <script> block");process.exit(1)}fs.writeFileSync(process.env.RUNNER_TEMP+"/chk.js",m[1]);'
+          node --check "$RUNNER_TEMP/chk.js"
+
+      - name: Constraint audit
+        run: |
+          if grep -nE 'localStorage|sessionStorage|indexedDB|document\.cookie|!important' index.html; then
+            echo "::error::Forbidden storage API or !important found in index.html"
+            exit 1
+          fi
+          urls=$(grep -nE 'https?://' index.html | grep -v 'FORMSUBMIT_ENDPOINT' || true)
+          if [ -n "$urls" ]; then
+            echo "$urls"
+            echo "::error::External URL found; only FORMSUBMIT_ENDPOINT is allowed"
+            exit 1
+          fi
